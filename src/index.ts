@@ -10,6 +10,7 @@ import { runsRouter } from './routes/runs'
 import { testsRouter } from './routes/tests'
 import { webhooksRouter } from './routes/webhooks'
 import { runSocketHandler } from './ws/runSocket'
+import { suggestTests } from './services/gemini/suggester'
 
 const app = Fastify({
   logger: {
@@ -41,6 +42,18 @@ async function bootstrap() {
       return reply.type('text/html').send(html)
     } catch {
       return reply.code(404).send('Report not found')
+    }
+  })
+
+  // AI test suggestions
+  app.post<{ Body: { targetUrl: string } }>('/api/suggest', async (req, reply) => {
+    const { targetUrl } = req.body
+    if (!targetUrl) return reply.code(400).send({ error: 'targetUrl is required' })
+    try {
+      const suggestions = await suggestTests(targetUrl)
+      return { suggestions }
+    } catch (err: any) {
+      return reply.code(500).send({ error: err.message || 'Failed to generate suggestions' })
     }
   })
 
