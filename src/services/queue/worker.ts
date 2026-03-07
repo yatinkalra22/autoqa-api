@@ -9,6 +9,9 @@ import { detectElement } from '../gemini/detector'
 import { validateTestResult } from '../gemini/validator'
 import { geminiLimiter } from '../gemini/rateLimiter'
 import { generateReport } from '../reporter/html'
+import * as fs from 'fs/promises'
+import * as path from 'path'
+import { config } from '../../config'
 import { annotateScreenshot } from '../reporter/annotator'
 import { broadcastToRun } from '../../ws/runSocket'
 import type { TestJobData } from './jobs'
@@ -147,6 +150,17 @@ export function startWorker() {
         const finalStatus = validation.status === 'PASS' ? 'PASS' : 'FAIL'
         const completedAt = new Date()
         const durationMs = completedAt.getTime() - startedAt.getTime()
+
+        // Save final screenshot for visual regression
+        const finalScreenshot = screenshots[screenshots.length - 1]
+        if (finalScreenshot) {
+          const screenshotDir = config.localStoragePath
+          await fs.mkdir(screenshotDir, { recursive: true })
+          await fs.writeFile(
+            path.join(screenshotDir, `screenshot-${runId}.png`),
+            Buffer.from(finalScreenshot, 'base64')
+          )
+        }
 
         const reportUrl = await generateReport(runId, {
           prompt,

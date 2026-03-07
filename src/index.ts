@@ -12,6 +12,7 @@ import { webhooksRouter } from './routes/webhooks'
 import { runSocketHandler } from './ws/runSocket'
 import { suggestTests } from './services/gemini/suggester'
 import { auditAccessibility } from './services/gemini/a11yAuditor'
+import { compareScreenshots } from './services/gemini/visualDiff'
 import { browserPool, captureScreenshot } from './services/playwright/engine'
 
 const app = Fastify({
@@ -75,6 +76,39 @@ async function bootstrap() {
       }
     } catch (err: any) {
       return reply.code(500).send({ error: err.message || 'Audit failed' })
+    }
+  })
+
+  // Visual regression comparison
+  app.post<{ Body: { baselineRunId: string; currentRunId: string } }>('/api/compare', async (req, reply) => {
+    const { baselineRunId, currentRunId } = req.body
+    if (!baselineRunId || !currentRunId) {
+      return reply.code(400).send({ error: 'baselineRunId and currentRunId are required' })
+    }
+    try {
+      const baselinePath = path.join(config.localStoragePath, `screenshot-${baselineRunId}.png`)
+      const currentPath = path.join(config.localStoragePath, `screenshot-${currentRunId}.png`)
+
+      const [baselineBuffer, currentBuffer] = await Promise.all([
+        fs.readFile(baselinePath),
+        fs.readFile(currentPath),
+      ])
+
+      const diff = await compareScreenshots(
+        baselineBuffer.toString('base64'),
+        currentBuffer.toString('base64')
+      )
+
+      return {
+        ...diff,
+        baselineScreenshot: `data:image/png;base64,${baselineBuffer.toString('base64')}`,
+        currentScreenshot: `data:image/png;base64,${currentBuffer.toString('base64')}`,
+      }
+    } catch (err: any) {
+      if (err.code === 'ENOENT') {
+        return reply.code(404).send({ error: 'Screenshot not found for one or both runs' })
+      }
+      return reply.code(500).send({ error: err.message || 'Comparison failed' })
     }
   })
 
