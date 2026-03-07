@@ -11,6 +11,8 @@ import { testsRouter } from './routes/tests'
 import { webhooksRouter } from './routes/webhooks'
 import { runSocketHandler } from './ws/runSocket'
 import { suggestTests } from './services/gemini/suggester'
+import { auditAccessibility } from './services/gemini/a11yAuditor'
+import { browserPool, captureScreenshot } from './services/playwright/engine'
 
 const app = Fastify({
   logger: {
@@ -54,6 +56,25 @@ async function bootstrap() {
       return { suggestions }
     } catch (err: any) {
       return reply.code(500).send({ error: err.message || 'Failed to generate suggestions' })
+    }
+  })
+
+  // Accessibility audit
+  app.post<{ Body: { targetUrl: string } }>('/api/a11y', async (req, reply) => {
+    const { targetUrl } = req.body
+    if (!targetUrl) return reply.code(400).send({ error: 'targetUrl is required' })
+    try {
+      const { page, release } = await browserPool.acquire()
+      try {
+        await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 30000 })
+        const screenshot = await captureScreenshot(page)
+        const audit = await auditAccessibility(screenshot, targetUrl)
+        return audit
+      } finally {
+        await release()
+      }
+    } catch (err: any) {
+      return reply.code(500).send({ error: err.message || 'Audit failed' })
     }
   })
 
