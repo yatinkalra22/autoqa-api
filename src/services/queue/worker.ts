@@ -51,6 +51,8 @@ export function startWorker() {
         for (let step = 1; step <= maxSteps; step++) {
           const currentScreenshot = await captureScreenshot(page)
 
+          const stepStart = Date.now()
+
           await geminiLimiter.acquire()
           const plan = await planNextAction(currentScreenshot, prompt, actionHistory, step)
           geminiCalls++
@@ -89,12 +91,17 @@ export function startWorker() {
                 label: plan.target,
                 color: 'blue',
               }
+            } else {
+              // Element not found — broadcast and mark step as failed
+              broadcast(runId, { type: 'validation', passed: false, message: `Could not find element: "${plan.target}"` })
             }
           }
 
           const result = await executeAction(page, plan.action, plan.value, x, y)
           const screenshotAfter = await captureScreenshot(page)
           screenshots.push(screenshotAfter)
+
+          const stepDuration = Date.now() - stepStart
 
           const stepRecord: StepRecord = {
             step,
@@ -105,7 +112,7 @@ export function startWorker() {
             narration: plan.narration,
             success: result.success,
             annotation,
-            durationMs: 0,
+            durationMs: stepDuration,
             timestamp: new Date().toISOString(),
           }
           steps.push(stepRecord)

@@ -23,58 +23,74 @@ interface ReportOptions {
 }
 
 export async function generateReport(runId: string, opts: ReportOptions): Promise<string> {
-  const { prompt, targetUrl, status, steps, summary, durationMs } = opts
+  const { prompt, targetUrl, status, steps, screenshots, summary, durationMs } = opts
 
   const statusColor = status === 'PASS' ? '#16a34a' : '#dc2626'
-  const statusIcon = status === 'PASS' ? 'PASS' : 'FAIL'
+  const statusBg = status === 'PASS' ? '#052e16' : '#450a0a'
+  const statusLabel = status === 'PASS' ? 'PASS' : 'FAIL'
+  const date = new Date().toLocaleString()
 
-  const stepsHtml = steps.map(s => `
-    <div style="background:#1e293b;border:1px solid #334155;border-radius:12px;padding:16px;margin-bottom:12px;border-left:3px solid ${s.success ? '#16a34a' : '#dc2626'}">
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
+  const stepsHtml = steps.map((s, i) => {
+    const screenshot = screenshots[i + 1]
+    const screenshotTag = screenshot
+      ? `<img src="data:image/png;base64,${screenshot}" style="width:100%;border-radius:8px;margin-top:12px;border:1px solid #334155;" alt="Step ${s.step}" />`
+      : ''
+
+    return `
+    <div style="background:#1e293b;border:1px solid #334155;border-radius:12px;padding:16px;margin-bottom:16px;border-left:3px solid ${s.success ? '#16a34a' : '#dc2626'}">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;flex-wrap:wrap;">
         <span style="background:#334155;color:#94a3b8;padding:2px 8px;border-radius:4px;font-size:12px;font-weight:600;">Step ${s.step}</span>
-        <span>${s.success ? 'OK' : 'FAIL'}</span>
-        <span style="color:#e2e8f0;font-weight:500;flex:1;">${s.action} "${s.target}"</span>
+        <span style="color:${s.success ? '#4ade80' : '#f87171'};font-size:12px;font-weight:600;">${s.success ? 'OK' : 'FAIL'}</span>
+        <span style="color:#e2e8f0;font-weight:500;flex:1;">${escapeHtml(s.action)} &ldquo;${escapeHtml(s.target)}&rdquo;</span>
+        <span style="color:#64748b;font-size:12px;">${s.durationMs}ms</span>
       </div>
-      <div style="color:#94a3b8;font-size:14px;margin-bottom:4px;">${s.narration}</div>
-      <div style="color:#64748b;font-size:12px;font-style:italic;">${s.reasoning}</div>
-    </div>
-  `).join('')
+      <div style="color:#94a3b8;font-size:14px;margin-bottom:4px;">${escapeHtml(s.narration)}</div>
+      <div style="color:#64748b;font-size:12px;font-style:italic;">${escapeHtml(s.reasoning)}</div>
+      ${screenshotTag}
+    </div>`
+  }).join('')
 
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AutoQA Report</title>
+<title>AutoQA Report - ${statusLabel}</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: Inter, -apple-system, sans-serif; background: #0f172a; color: #e2e8f0; line-height: 1.6; padding: 32px 24px; }
+  body { font-family: Inter, -apple-system, sans-serif; background: #0f172a; color: #e2e8f0; line-height: 1.6; padding: 32px 16px; }
   .container { max-width: 900px; margin: 0 auto; }
+  img { max-width: 100%; }
 </style>
 </head>
 <body>
 <div class="container">
   <div style="background:#1e293b;border:1px solid #334155;border-radius:16px;padding:24px;margin-bottom:24px;">
-    <span style="display:inline-flex;align-items:center;gap:8px;padding:6px 16px;border-radius:999px;font-weight:600;font-size:14px;background:${status === 'PASS' ? '#052e16' : '#450a0a'};color:${statusColor};border:1px solid ${statusColor}40;">
-      ${statusIcon}
+    <span style="display:inline-flex;align-items:center;gap:8px;padding:6px 16px;border-radius:999px;font-weight:600;font-size:14px;background:${statusBg};color:${statusColor};border:1px solid ${statusColor}40;">
+      ${statusLabel}
     </span>
     <h1 style="font-size:24px;color:#f1f5f9;margin:12px 0 8px;">AutoQA Report</h1>
-    <div style="display:flex;gap:24px;color:#64748b;font-size:14px;">
-      <span>${targetUrl}</span>
+    <div style="display:flex;gap:16px;color:#64748b;font-size:14px;flex-wrap:wrap;">
+      <span>${escapeHtml(targetUrl)}</span>
       <span>${(durationMs / 1000).toFixed(1)}s</span>
       <span>${steps.length} steps</span>
+      <span>${date}</span>
     </div>
     <div style="margin-top:12px;padding:12px;background:#0f172a;border-radius:8px;color:#94a3b8;font-size:14px;">
-      "${prompt}"
+      &ldquo;${escapeHtml(prompt)}&rdquo;
     </div>
   </div>
+
   <div style="background:#1e293b;border:1px solid #334155;border-radius:12px;padding:20px;margin-bottom:24px;">
     <h2 style="color:#94a3b8;font-size:12px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:8px;">AI Summary</h2>
-    <p style="color:#cbd5e1;">${summary}</p>
+    <p style="color:#cbd5e1;">${escapeHtml(summary)}</p>
   </div>
+
+  <h2 style="color:#94a3b8;font-size:12px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:16px;">Execution Steps</h2>
   ${stepsHtml}
+
   <div style="margin-top:32px;text-align:center;color:#475569;font-size:12px;">
-    Generated by AutoQA - Run ID: ${runId}
+    Generated by AutoQA &middot; Run ID: ${runId}
   </div>
 </div>
 </body>
@@ -86,4 +102,12 @@ export async function generateReport(runId: string, opts: ReportOptions): Promis
   await fs.writeFile(path.join(reportDir, filename), html, 'utf8')
 
   return `/api/reports/${runId}`
+}
+
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
 }
