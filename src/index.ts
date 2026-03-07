@@ -14,6 +14,7 @@ import { suggestTests } from './services/gemini/suggester'
 import { auditAccessibility } from './services/gemini/a11yAuditor'
 import { compareScreenshots } from './services/gemini/visualDiff'
 import { browserPool, captureScreenshot } from './services/playwright/engine'
+import { getWebhooks, setWebhooks } from './services/notifier'
 
 const app = Fastify({
   logger: {
@@ -111,6 +112,20 @@ async function bootstrap() {
       return reply.code(500).send({ error: err.message || 'Comparison failed' })
     }
   })
+
+  // Notification webhooks settings
+  app.get('/api/settings/webhooks', async () => {
+    return { webhooks: getWebhooks() }
+  })
+
+  app.put<{ Body: { webhooks: Array<{ url: string; type: 'slack' | 'generic' }> } }>(
+    '/api/settings/webhooks',
+    async (req) => {
+      const { webhooks } = req.body
+      setWebhooks(webhooks || [])
+      return { webhooks: getWebhooks() }
+    }
+  )
 
   app.get('/ws/runs/:runId', { websocket: true }, runSocketHandler as any)
 

@@ -42,17 +42,22 @@ The API runs on `http://localhost:3001`.
 ## API Endpoints
 
 ```
-GET  /health              Health check
-POST /api/runs            Start a new test run
-GET  /api/runs            List recent runs
-GET  /api/runs/:id        Get run status
-GET  /api/tests           List saved tests
-POST /api/tests/:id/run   Re-run a saved test
-DELETE /api/tests/:id     Delete a saved test
-POST /api/suggest         AI-generated test suggestions
-POST /api/webhooks/ci     CI/CD webhook trigger
-GET  /api/reports/:id     View HTML report
-WS   /ws/runs/:id         Real-time run updates
+GET  /health                    Health check
+POST /api/runs                  Start a new test run
+GET  /api/runs                  List recent runs
+GET  /api/runs/:id              Get run status
+GET  /api/runs/:id/export       Export run as Playwright test code
+GET  /api/tests                 List saved tests
+POST /api/tests/:id/run         Re-run a saved test
+DELETE /api/tests/:id           Delete a saved test
+POST /api/suggest               AI-generated test suggestions
+POST /api/a11y                  Accessibility audit (Gemini Vision)
+POST /api/compare               Visual regression (compare two runs)
+GET  /api/settings/webhooks     Get notification webhook config
+PUT  /api/settings/webhooks     Update notification webhooks
+POST /api/webhooks/ci           CI/CD webhook trigger
+GET  /api/reports/:id           View HTML report
+WS   /ws/runs/:id               Real-time run updates
 ```
 
 ## Architecture

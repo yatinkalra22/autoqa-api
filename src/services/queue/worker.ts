@@ -14,6 +14,7 @@ import * as path from 'path'
 import { config } from '../../config'
 import { annotateScreenshot } from '../reporter/annotator'
 import { broadcastToRun } from '../../ws/runSocket'
+import { notifyRunComplete } from '../notifier'
 import type { TestJobData } from './jobs'
 import type { WSMessage } from '../../ws/runSocket'
 
@@ -189,6 +190,17 @@ export function startWorker() {
           reportUrl: reportUrl || '',
           durationMs,
         })
+
+        notifyRunComplete({
+          runId,
+          status: finalStatus,
+          prompt,
+          targetUrl,
+          summary: validation.explanation,
+          durationMs,
+          reportUrl,
+          stepsCount: steps.length,
+        }).catch(() => {})
       } catch (err: any) {
         const msg = err.message || 'Unknown error'
         await db.update(testRuns).set({
