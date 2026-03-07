@@ -4,6 +4,7 @@ import { db } from '../db'
 import { testRuns, tests } from '../db/schema'
 import { runQueue } from '../services/queue/jobs'
 import { eq, desc } from 'drizzle-orm'
+import { generatePlaywrightCode } from '../services/exporter/playwright'
 
 const createRunSchema = z.object({
   targetUrl: z.string().url(),
@@ -62,5 +63,19 @@ export const runsRouter: FastifyPluginAsync = async (app) => {
 
   app.get('/', async () => {
     return db.select().from(testRuns).orderBy(desc(testRuns.startedAt)).limit(50)
+  })
+
+  app.get<{ Params: { runId: string } }>('/:runId/export', async (req, reply) => {
+    const [run] = await db.select().from(testRuns).where(eq(testRuns.id, req.params.runId))
+    if (!run) return reply.code(404).send({ error: 'Run not found' })
+    if (!run.steps || !Array.isArray(run.steps) || run.steps.length === 0) {
+      return reply.code(400).send({ error: 'No steps to export' })
+    }
+
+    const code = generatePlaywrightCode(run.targetUrl, run.prompt, run.steps as any)
+    return reply
+      .header('Content-Type', 'text/plain')
+      .header('Content-Disposition', `attachment; filename="autoqa-test-${req.params.runId.slice(0, 8)}.spec.ts"`)
+      .send(code)
   })
 }
