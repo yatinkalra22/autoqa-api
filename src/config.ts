@@ -7,7 +7,7 @@ const schema = z.object({
   DATABASE_URL: z.string(),
   REDIS_URL: z.string().default('redis://localhost:6379'),
   GEMINI_API_KEY: z.string(),
-  CORS_ORIGINS: z.string().default('http://localhost:3000'),
+  CORS_ORIGINS: z.string().default('http://localhost:3000,http://localhost:5173'),
   STORAGE_TYPE: z.enum(['local', 's3']).default('local'),
   LOCAL_STORAGE_PATH: z.string().default('./storage/reports'),
   S3_BUCKET: z.string().optional(),
