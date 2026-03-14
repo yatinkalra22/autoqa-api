@@ -154,17 +154,31 @@ export async function executeAction(
 ): Promise<{ success: boolean; error?: string }> {
   try {
     switch (action) {
-      case 'click':
+      case 'click': {
+        // Listen for popups (e.g. OAuth windows) before clicking
+        const popupPromise = page.context().waitForEvent('page', { timeout: 3000 }).catch(() => null)
+
         if (locator) {
           await locator.click({ timeout: 5000 })
-          await page.waitForTimeout(300)
         } else if (x !== undefined && y !== undefined) {
           await page.mouse.click(x, y)
-          await page.waitForTimeout(300)
         } else {
           return { success: false, error: 'No element or coordinates provided for click action' }
         }
+
+        // Check if a popup opened (OAuth, external links, etc.)
+        const popup = await popupPromise
+        if (popup) {
+          try {
+            await popup.waitForLoadState('domcontentloaded', { timeout: 5000 })
+          } catch {
+            // Popup may have been blocked or closed
+          }
+        }
+
+        await page.waitForTimeout(300)
         break
+      }
 
       case 'type':
         if (!value) {

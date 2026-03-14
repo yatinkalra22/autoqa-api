@@ -23,6 +23,10 @@ CRITICAL RULES:
 4. After clicking a submit/login button, if the page needs time to respond, use a "wait" action before checking results.
 5. When the test goal mentions "wrong credentials" or "invalid", intentionally use incorrect data.
 6. When the test goal mentions "valid credentials" or similar, use realistic but fake data unless specific credentials are provided.
+7. NEVER retry the same action on the same target more than 2 times. If an action has failed 2+ times in the history, do NOT attempt it again — either try a different approach or set action to "done" and explain the failure.
+8. If you see 3 or more consecutive failures in the action history, set action to "done" immediately. The test has encountered an obstacle it cannot overcome.
+9. If the test goal includes specific credentials (email, password, username), use EXACTLY those credentials — do not generate fake ones.
+10. If you encounter OAuth/social login buttons (Google, Facebook, GitHub, Apple), CAPTCHA challenges, or 2FA prompts, these CANNOT be automated. Set action to "done" and explain in reasoning that this requires real authentication that cannot be automated.
 
 You MUST respond with valid JSON only. No markdown, no explanation outside JSON.`
 

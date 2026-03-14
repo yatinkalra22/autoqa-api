@@ -8,6 +8,7 @@ import { planNextAction } from '../gemini/planner'
 import { detectElement } from '../gemini/detector'
 import { validateTestResult } from '../gemini/validator'
 import { verifyActionEffect } from '../gemini/verifier'
+import { detectBlocker } from '../gemini/blockerDetector'
 import { geminiLimiter } from '../gemini/rateLimiter'
 import { generateReport } from '../reporter/html'
 import * as fs from 'fs/promises'
@@ -53,7 +54,56 @@ export function startWorker() {
         const initialScreenshot = await captureScreenshot(page)
         screenshots.push(initialScreenshot)
 
+        let consecutiveFailures = 0
+        const MAX_CONSECUTIVE_FAILURES = 3
+
         for (let step = 1; step <= maxSteps; step++) {
+          // Circuit breaker: stop if too many consecutive failures
+          if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+            // Analyze WHY we're stuck — detect known blockers
+            const lastFailedAction = actionHistory[actionHistory.length - 1]
+            const currentScreenshot = await captureScreenshot(page)
+            try {
+              await geminiLimiter.acquire()
+              const blocker = await detectBlocker(
+                currentScreenshot,
+                lastFailedAction?.action || 'unknown',
+                lastFailedAction?.target || 'unknown'
+              )
+              geminiCalls++
+
+              if (blocker.hasBlocker) {
+                const blockerLabels: Record<string, string> = {
+                  oauth: 'Third-Party Authentication Required',
+                  captcha: 'CAPTCHA / Bot Detection',
+                  '2fa': 'Two-Factor Authentication Required',
+                  paywall: 'Paywall / Subscription Required',
+                  geo_block: 'Geographic Restriction Detected',
+                  rate_limit: 'Rate Limiting Detected',
+                }
+                const label = blockerLabels[blocker.blockerType] || 'Automation Blocker Detected'
+                broadcast(runId, {
+                  type: 'validation',
+                  passed: false,
+                  message: `⚠ ${label}: ${blocker.description} — ${blocker.userAdvice}`,
+                })
+              } else {
+                broadcast(runId, {
+                  type: 'validation',
+                  passed: false,
+                  message: `Stopping after ${MAX_CONSECUTIVE_FAILURES} consecutive failed actions. The element "${lastFailedAction?.target}" could not be interacted with. Try rewording your test instructions or check the target page.`,
+                })
+              }
+            } catch {
+              broadcast(runId, {
+                type: 'validation',
+                passed: false,
+                message: `Stopping after ${MAX_CONSECUTIVE_FAILURES} consecutive failed actions. The test cannot proceed.`,
+              })
+            }
+            break
+          }
+
           const currentScreenshot = await captureScreenshot(page)
 
           const stepStart = Date.now()
@@ -127,6 +177,7 @@ export function startWorker() {
                   timestamp: new Date().toISOString(),
                 })
                 actionHistory.push({ action: plan.action, target: plan.target, value: plan.value, success: false })
+                consecutiveFailures++
                 broadcast(runId, {
                   type: 'step_complete',
                   step,
@@ -153,6 +204,7 @@ export function startWorker() {
               timestamp: new Date().toISOString(),
             })
             actionHistory.push({ action: plan.action, target: plan.target, value: plan.value, success: false })
+            consecutiveFailures++
             broadcast(runId, {
               type: 'step_complete',
               step,
@@ -208,6 +260,11 @@ export function startWorker() {
           }
           steps.push(stepRecord)
           actionHistory.push({ action: plan.action, target: plan.target, value: plan.value, success: actionSuccess })
+          if (actionSuccess) {
+            consecutiveFailures = 0
+          } else {
+            consecutiveFailures++
+          }
 
           let annotatedScreenshot = screenshotAfter
           if (annotation) {
