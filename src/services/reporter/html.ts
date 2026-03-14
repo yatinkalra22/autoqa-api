@@ -6,6 +6,7 @@ interface StepRecord {
   step: number
   action: string
   target: string
+  value?: string
   narration: string
   reasoning: string
   success: boolean
@@ -46,7 +47,7 @@ export async function generateReport(runId: string, opts: ReportOptions): Promis
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap;">
         <span style="background:#D6E3F8;color:#1d2e4c;padding:2px 9px;border-radius:5px;font-size:11px;font-weight:700;letter-spacing:0.04em;">Step ${s.step}</span>
         <span style="background:${stepBadgeBg(s.success)};color:${stepBadgeColor(s.success)};padding:2px 8px;border-radius:5px;font-size:11px;font-weight:700;">${s.success ? 'OK' : 'FAIL'}</span>
-        <span style="color:#1d2e4c;font-weight:500;flex:1;font-size:14px;">${escapeHtml(s.action)} &ldquo;${escapeHtml(s.target)}&rdquo;</span>
+        <span style="color:#1d2e4c;font-weight:500;flex:1;font-size:14px;">${escapeHtml(s.action)} &ldquo;${escapeHtml(s.target)}&rdquo;${s.value ? ` <span style="color:#4d5f7c;font-size:12px;background:#edf3fd;padding:2px 8px;border-radius:4px;margin-left:6px;">value: &ldquo;${escapeHtml(s.value)}&rdquo;</span>` : ''}</span>
         <span style="color:#4d5f7c;font-size:12px;">${s.durationMs}ms</span>
       </div>
       <div style="color:#1d2e4c;font-size:14px;margin-bottom:4px;">${escapeHtml(s.narration)}</div>

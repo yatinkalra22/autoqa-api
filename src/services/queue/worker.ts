@@ -3,10 +3,11 @@ import { redis } from './redis'
 import { db } from '../../db'
 import { testRuns } from '../../db/schema'
 import { eq } from 'drizzle-orm'
-import { browserPool, captureScreenshot, executeAction } from '../playwright/engine'
+import { browserPool, captureScreenshot, executeAction, findElementByDescription } from '../playwright/engine'
 import { planNextAction } from '../gemini/planner'
 import { detectElement } from '../gemini/detector'
 import { validateTestResult } from '../gemini/validator'
+import { verifyActionEffect } from '../gemini/verifier'
 import { geminiLimiter } from '../gemini/rateLimiter'
 import { generateReport } from '../reporter/html'
 import * as fs from 'fs/promises'
@@ -45,10 +46,10 @@ export function startWorker() {
       const { page, release } = await browserPool.acquire()
       const steps: StepRecord[] = []
       const screenshots: string[] = []
-      const actionHistory: Array<{ action: string; target: string; success: boolean }> = []
+      const actionHistory: Array<{ action: string; target: string; value?: string; success: boolean }> = []
 
       try {
-        await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 30000 })
+        await page.goto(targetUrl, { waitUntil: 'networkidle', timeout: 30000 })
         const initialScreenshot = await captureScreenshot(page)
         screenshots.push(initialScreenshot)
 
@@ -79,31 +80,115 @@ export function startWorker() {
           let y: number | undefined
           let annotation: any = undefined
 
+          // Strategy: Try DOM selectors first (precise), fall back to AI vision detection
+          let locator = null as any
           if (['click', 'type', 'hover'].includes(plan.action) && plan.target) {
-            await geminiLimiter.acquire()
-            const detection = await detectElement(currentScreenshot, plan.target)
-            geminiCalls++
+            // 1. Try Playwright DOM selectors (fast, precise)
+            locator = await findElementByDescription(page, plan.target, plan.action)
 
-            if (detection.found) {
-              x = Math.round(detection.x + detection.width / 2)
-              y = Math.round(detection.y + detection.height / 2)
-              annotation = {
-                x: detection.x,
-                y: detection.y,
-                w: detection.width,
-                h: detection.height,
-                label: plan.target,
-                color: 'blue',
+            if (!locator) {
+              // 2. Fall back to AI vision-based coordinate detection
+              await geminiLimiter.acquire()
+              let detection = await detectElement(currentScreenshot, plan.target)
+              geminiCalls++
+
+              // Retry once with a fresh screenshot if detection fails
+              if (!detection.found || detection.confidence < 30) {
+                await page.waitForTimeout(1000)
+                const retryScreenshot = await captureScreenshot(page)
+                await geminiLimiter.acquire()
+                detection = await detectElement(retryScreenshot, plan.target)
+                geminiCalls++
               }
-            } else {
-              // Element not found — broadcast and mark step as failed
-              broadcast(runId, { type: 'validation', passed: false, message: `Could not find element: "${plan.target}"` })
+
+              if (detection.found && detection.confidence >= 20) {
+                x = Math.round(detection.x + detection.width / 2)
+                y = Math.round(detection.y + detection.height / 2)
+                annotation = {
+                  x: detection.x,
+                  y: detection.y,
+                  w: detection.width,
+                  h: detection.height,
+                  label: plan.target,
+                  color: 'blue',
+                }
+              } else {
+                broadcast(runId, { type: 'validation', passed: false, message: `Could not find element: "${plan.target}"` })
+                const stepDuration = Date.now() - stepStart
+                steps.push({
+                  step,
+                  action: plan.action,
+                  target: plan.target,
+                  value: plan.value,
+                  reasoning: plan.reasoning,
+                  narration: plan.narration,
+                  success: false,
+                  durationMs: stepDuration,
+                  timestamp: new Date().toISOString(),
+                })
+                actionHistory.push({ action: plan.action, target: plan.target, value: plan.value, success: false })
+                broadcast(runId, {
+                  type: 'step_complete',
+                  step,
+                  success: false,
+                  screenshotDataUrl: `data:image/png;base64,${currentScreenshot}`,
+                })
+                continue
+              }
             }
           }
 
-          const result = await executeAction(page, plan.action, plan.value, x, y)
+          // Validate that we have either a locator or coordinates for interactive actions
+          if (['click', 'type'].includes(plan.action) && !locator && x === undefined) {
+            const stepDuration = Date.now() - stepStart
+            steps.push({
+              step,
+              action: plan.action,
+              target: plan.target,
+              value: plan.value,
+              reasoning: plan.reasoning,
+              narration: plan.narration,
+              success: false,
+              durationMs: stepDuration,
+              timestamp: new Date().toISOString(),
+            })
+            actionHistory.push({ action: plan.action, target: plan.target, value: plan.value, success: false })
+            broadcast(runId, {
+              type: 'step_complete',
+              step,
+              success: false,
+              screenshotDataUrl: `data:image/png;base64,${currentScreenshot}`,
+            })
+            continue
+          }
+
+          const result = await executeAction(page, plan.action, plan.value, x, y, locator)
           const screenshotAfter = await captureScreenshot(page)
           screenshots.push(screenshotAfter)
+
+          // Self-verify type and click actions by comparing before/after screenshots
+          let actionSuccess = result.success
+          let verificationNote = ''
+          if (result.success && ['type', 'click'].includes(plan.action)) {
+            try {
+              await geminiLimiter.acquire()
+              const verification = await verifyActionEffect(
+                currentScreenshot, screenshotAfter, plan.action, plan.target, plan.value
+              )
+              geminiCalls++
+              if (!verification.success) {
+                actionSuccess = false
+                verificationNote = verification.observation
+                broadcast(runId, {
+                  type: 'validation',
+                  passed: false,
+                  message: `Step ${step} verification failed: ${verification.observation}${verification.suggestedFix ? ` (${verification.suggestedFix})` : ''}`,
+                })
+              }
+            } catch {
+              // If verification itself fails, trust the original result
+            }
+          }
 
           const stepDuration = Date.now() - stepStart
 
@@ -113,14 +198,16 @@ export function startWorker() {
             target: plan.target,
             value: plan.value,
             reasoning: plan.reasoning,
-            narration: plan.narration,
-            success: result.success,
+            narration: verificationNote
+              ? `${plan.narration} [VERIFY FAILED: ${verificationNote}]`
+              : plan.narration,
+            success: actionSuccess,
             annotation,
             durationMs: stepDuration,
             timestamp: new Date().toISOString(),
           }
           steps.push(stepRecord)
-          actionHistory.push({ action: plan.action, target: plan.target, success: result.success })
+          actionHistory.push({ action: plan.action, target: plan.target, value: plan.value, success: actionSuccess })
 
           let annotatedScreenshot = screenshotAfter
           if (annotation) {
@@ -132,7 +219,10 @@ export function startWorker() {
           broadcast(runId, {
             type: 'step_complete',
             step,
-            success: result.success,
+            action: plan.action,
+            target: plan.target,
+            value: plan.value,
+            success: actionSuccess,
             screenshotDataUrl: `data:image/png;base64,${annotatedScreenshot}`,
             annotation,
           })

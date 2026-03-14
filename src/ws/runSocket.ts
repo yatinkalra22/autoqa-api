@@ -4,7 +4,7 @@ import type { RawData, WebSocket } from 'ws'
 export type WSMessage =
   | { type: 'run_started'; runId: string }
   | { type: 'step_start'; step: number; action: string; target: string; reasoning: string; narration: string }
-  | { type: 'step_complete'; step: number; success: boolean; screenshotDataUrl: string; annotation?: any }
+  | { type: 'step_complete'; step: number; action?: string; target?: string; value?: string; success: boolean; screenshotDataUrl: string; annotation?: any }
   | { type: 'validation'; passed: boolean; message: string }
   | { type: 'run_complete'; status: string; summary: string; reportUrl: string; durationMs: number }
   | { type: 'error'; message: string; step?: number }

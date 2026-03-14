@@ -44,5 +44,9 @@ Respond with JSON:
     ...screenshotParts,
   ])
 
-  return JSON.parse(result.response.text()) as ValidationResult
+  let text = result.response.text().trim()
+  if (text.startsWith('```')) {
+    text = text.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '')
+  }
+  return JSON.parse(text) as ValidationResult
 }
