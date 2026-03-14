@@ -1,10 +1,13 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { z } from 'zod'
+import * as fs from 'fs/promises'
+import * as path from 'path'
 import { db } from '../db'
 import { testRuns, tests } from '../db/schema'
 import { runQueue } from '../services/queue/jobs'
 import { eq, desc } from 'drizzle-orm'
 import { generatePlaywrightCode } from '../services/exporter/playwright'
+import { config } from '../config'
 
 const createRunSchema = z.object({
   targetUrl: z.string().url(),
@@ -18,13 +21,6 @@ const createRunSchema = z.object({
 export const runsRouter: FastifyPluginAsync = async (app) => {
   app.post<{ Body: z.infer<typeof createRunSchema> }>('/', async (req, reply) => {
     const body = createRunSchema.parse(req.body)
-
-    const url = new URL(body.targetUrl)
-    const blocked = ['localhost', '127.0.0.1', '0.0.0.0', '::1']
-    const blockedPrefixes = ['10.', '192.168.', '172.16.']
-    if (blocked.includes(url.hostname) || blockedPrefixes.some(b => url.hostname.startsWith(b))) {
-      return reply.code(400).send({ error: 'Internal URLs are not allowed.' })
-    }
 
     let testId = body.testId
     if (body.saveTest && body.testName) {
@@ -58,7 +54,33 @@ export const runsRouter: FastifyPluginAsync = async (app) => {
   app.get<{ Params: { runId: string } }>('/:runId', async (req, reply) => {
     const [run] = await db.select().from(testRuns).where(eq(testRuns.id, req.params.runId))
     if (!run) return reply.code(404).send({ error: 'Run not found' })
-    return run
+
+    // Reconstruct narrations from persisted steps so the run viewer can display them
+    const steps = (run.steps as any[]) ?? []
+    const narrations: Array<{ step: number; text: string; type: string; success?: boolean }> = []
+    for (const s of steps) {
+      if (s.narration) {
+        narrations.push({ step: s.step, text: s.narration, type: 'action', success: s.success })
+      }
+      if (s.success === false) {
+        narrations.push({ step: s.step, text: `Step ${s.step} failed: ${s.action} on "${s.target}"`, type: 'validation', success: false })
+      }
+    }
+    if (run.summary) {
+      narrations.push({ step: 0, text: run.summary, type: 'summary', success: run.status === 'PASS' })
+    }
+
+    // Read the final saved screenshot from disk (base64 PNG)
+    let lastScreenshotDataUrl = ''
+    try {
+      const screenshotPath = path.join(config.localStoragePath, `screenshot-${run.id}.png`)
+      const buf = await fs.readFile(screenshotPath)
+      lastScreenshotDataUrl = `data:image/png;base64,${buf.toString('base64')}`
+    } catch {
+      // Screenshot not available (older runs or error runs)
+    }
+
+    return { ...run, narrations, lastScreenshotDataUrl }
   })
 
   app.get('/', async () => {

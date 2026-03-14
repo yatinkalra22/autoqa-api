@@ -1,4 +1,5 @@
-import type { WebSocket } from 'ws'
+import type { FastifyRequest } from 'fastify'
+import type { RawData, WebSocket } from 'ws'
 
 export type WSMessage =
   | { type: 'run_started'; runId: string }
@@ -11,14 +12,16 @@ export type WSMessage =
 
 const rooms = new Map<string, Set<WebSocket>>()
 
-export async function runSocketHandler(connection: { socket: WebSocket }, req: any) {
-  const runId = (req as any).params.runId
-  const ws = connection.socket
+export async function runSocketHandler(
+  ws: WebSocket,
+  req: FastifyRequest<{ Params: { runId: string } }>
+) {
+  const runId = req.params.runId
 
   if (!rooms.has(runId)) rooms.set(runId, new Set())
   rooms.get(runId)!.add(ws)
 
-  ws.on('message', (data: Buffer) => {
+  ws.on('message', (data: RawData) => {
     try {
       const msg = JSON.parse(data.toString())
       if (msg.type === 'ping') ws.send(JSON.stringify({ type: 'pong' }))
