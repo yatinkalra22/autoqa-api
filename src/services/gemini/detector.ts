@@ -1,4 +1,4 @@
-import { getGeminiModel, screenshotToPart } from './client'
+import { getGeminiModel, screenshotToPart, withRetry } from './client'
 
 export interface DetectionResult {
   found: boolean
@@ -42,10 +42,10 @@ Return JSON with the bounding box:
 
 If the element is not visible, set found: false and all coordinates to 0.`
 
-  const result = await model.generateContent([
+  const result = await withRetry(() => model.generateContent([
     { text: prompt },
     screenshotToPart(screenshotBase64),
-  ])
+  ]))
 
   let text = result.response.text().trim()
   if (text.startsWith('```')) {

@@ -1,4 +1,4 @@
-import { getGeminiModel, screenshotToPart } from './client'
+import { getGeminiModel, screenshotToPart, withRetry } from './client'
 
 export interface ValidationResult {
   status: 'PASS' | 'FAIL' | 'INCONCLUSIVE'
@@ -39,10 +39,10 @@ Respond with JSON:
   "suggestions": ["actionable debugging suggestions if failed"]
 }`
 
-  const result = await model.generateContent([
+  const result = await withRetry(() => model.generateContent([
     { text: prompt },
     ...screenshotParts,
-  ])
+  ]))
 
   let text = result.response.text().trim()
   if (text.startsWith('```')) {

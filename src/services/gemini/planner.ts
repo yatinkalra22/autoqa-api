@@ -1,4 +1,4 @@
-import { getGeminiModel, screenshotToPart } from './client'
+import { getGeminiModel, screenshotToPart, withRetry } from './client'
 
 export interface PlanResult {
   action: 'click' | 'type' | 'scroll' | 'pressKey' | 'navigate' | 'wait' | 'done'
@@ -49,7 +49,8 @@ export async function planNextAction(
   screenshotBase64: string,
   testGoal: string,
   history: Array<{ action: string; target: string; value?: string; success: boolean }>,
-  stepNumber: number
+  stepNumber: number,
+  options?: { authCompleted?: boolean; authCredentials?: Array<{ field: string; value: string }> }
 ): Promise<PlanResult> {
   const model = getGeminiModel()
 
@@ -60,19 +61,28 @@ export async function planNextAction(
       }).join('\n')}`
     : '\nThis is the first action.'
 
+  let authContext = ''
+  if (options?.authCompleted) {
+    authContext = `\nIMPORTANT: The user has ALREADY authenticated via a separate login flow before this test started. You are now logged in. Do NOT attempt to fill in login forms, enter credentials, or click login/sign-in buttons — authentication is already complete. Focus on testing the application AFTER login. If you see a login page, it may be because the page hasn't redirected yet — try waiting or navigating to the app's main page.`
+  } else if (options?.authCredentials && options.authCredentials.length > 0) {
+    // Auth was provided but login hasn't completed yet — tell the planner to use real credentials
+    const credList = options.authCredentials.map(c => `${c.field}: "${c.value}"`).join(', ')
+    authContext = `\nIMPORTANT: The user has provided login credentials. If you see a login form, use EXACTLY these credentials — do NOT generate fake ones:\n${credList}`
+  }
+
   const prompt = `${SYSTEM_PROMPT}
 
 TEST GOAL: ${testGoal}
-CURRENT STEP: ${stepNumber}${historyText}
+CURRENT STEP: ${stepNumber}${historyText}${authContext}
 
 Look at the current screenshot and decide the next action.
 Respond with JSON matching this schema exactly:
 ${ACTION_SCHEMA}`
 
-  const result = await model.generateContent([
+  const result = await withRetry(() => model.generateContent([
     { text: prompt },
     screenshotToPart(screenshotBase64),
-  ])
+  ]))
 
   let text = result.response.text().trim()
   // Strip markdown code fences if present

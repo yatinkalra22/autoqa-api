@@ -1,4 +1,4 @@
-import { getGeminiModel, screenshotToPart } from './client'
+import { getGeminiModel, screenshotToPart, withRetry } from './client'
 
 export interface BlockerAnalysis {
   hasBlocker: boolean
@@ -39,10 +39,10 @@ Respond with JSON:
   "userAdvice": "Actionable advice for the user on how to handle this situation (1-2 sentences)"
 }`
 
-  const result = await model.generateContent([
+  const result = await withRetry(() => model.generateContent([
     { text: prompt },
     screenshotToPart(screenshotBase64),
-  ])
+  ]))
 
   let text = result.response.text().trim()
   if (text.startsWith('```')) {

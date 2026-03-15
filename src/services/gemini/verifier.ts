@@ -1,4 +1,4 @@
-import { getGeminiModel, screenshotToPart } from './client'
+import { getGeminiModel, screenshotToPart, withRetry } from './client'
 
 export interface VerificationResult {
   success: boolean
@@ -42,13 +42,13 @@ Look carefully at both screenshots. Respond with JSON:
   "suggestedFix": "If failed, suggest what went wrong (e.g. 'clicked wrong element', 'field was not focused', 'text was typed into wrong field'). Omit if success."
 }`
 
-  const result = await model.generateContent([
+  const result = await withRetry(() => model.generateContent([
     { text: prompt },
     { text: 'BEFORE:' },
     screenshotToPart(screenshotBefore),
     { text: 'AFTER:' },
     screenshotToPart(screenshotAfter),
-  ])
+  ]))
 
   let text = result.response.text().trim()
   if (text.startsWith('```')) {

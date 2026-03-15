@@ -9,6 +9,7 @@ import { startWorker } from './services/queue/worker'
 import { runsRouter } from './routes/runs'
 import { testsRouter } from './routes/tests'
 import { webhooksRouter } from './routes/webhooks'
+import { authProfilesRouter } from './routes/authProfiles'
 import { runSocketHandler } from './ws/runSocket'
 import { suggestTests } from './services/gemini/suggester'
 import { auditAccessibility } from './services/gemini/a11yAuditor'
@@ -37,6 +38,7 @@ async function bootstrap() {
   await app.register(runsRouter, { prefix: '/api/runs' })
   await app.register(testsRouter, { prefix: '/api/tests' })
   await app.register(webhooksRouter, { prefix: '/api/webhooks' })
+  await app.register(authProfilesRouter, { prefix: '/api/auth-profiles' })
 
   // Report serving
   app.get<{ Params: { runId: string } }>('/api/reports/:runId', async (req, reply) => {

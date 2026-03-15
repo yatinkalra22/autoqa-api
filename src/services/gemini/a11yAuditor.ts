@@ -1,4 +1,4 @@
-import { getGeminiModel, screenshotToPart } from './client'
+import { getGeminiModel, screenshotToPart, withRetry } from './client'
 
 export interface A11yIssue {
   severity: 'critical' | 'major' | 'minor'
@@ -50,10 +50,10 @@ URL being audited: ${targetUrl}
 
 Analyze the screenshot and provide a thorough accessibility audit.`
 
-  const result = await model.generateContent([
+  const result = await withRetry(() => model.generateContent([
     { text: prompt },
     screenshotToPart(screenshotBase64),
-  ])
+  ]))
 
   const text = result.response.text()
   return JSON.parse(text) as A11yAuditResult

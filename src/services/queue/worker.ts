@@ -17,6 +17,7 @@ import { config } from '../../config'
 import { annotateScreenshot } from '../reporter/annotator'
 import { broadcastToRun } from '../../ws/runSocket'
 import { notifyRunComplete } from '../notifier'
+import { performLogin, loadCachedSession, invalidateCachedSession } from '../auth/sessionManager'
 import type { TestJobData } from './jobs'
 import type { WSMessage } from '../../ws/runSocket'
 
@@ -37,7 +38,7 @@ export function startWorker() {
   const worker = new Worker<TestJobData>(
     'test-runs',
     async (job) => {
-      const { runId, targetUrl, prompt, maxSteps } = job.data
+      const { runId, targetUrl, prompt, maxSteps, auth } = job.data
       const startedAt = new Date()
       let geminiCalls = 0
 
@@ -50,7 +51,101 @@ export function startWorker() {
       const actionHistory: Array<{ action: string; target: string; value?: string; success: boolean }> = []
 
       try {
-        await page.goto(targetUrl, { waitUntil: 'networkidle', timeout: 30000 })
+        // Handle authentication if auth config is provided
+        let authCompleted = false
+        if (auth) {
+          broadcast(runId, {
+            type: 'validation',
+            passed: true,
+            message: 'Authenticating before test...',
+          })
+
+          // Try cached session first
+          const cached = await loadCachedSession(auth)
+          let usedCache = false
+          if (cached) {
+            // Cookies can be set before navigation
+            await page.context().addCookies(cached.cookies)
+            // Navigate to target first so localStorage is accessible
+            await page.goto(targetUrl, { waitUntil: 'networkidle', timeout: 30000 })
+            // Now inject localStorage on the real page
+            for (const origin of cached.origins) {
+              for (const item of origin.localStorage || []) {
+                try {
+                  await page.evaluate(
+                    ([key, value]) => localStorage.setItem(key, value),
+                    [item.name, item.value]
+                  )
+                } catch {
+                  // Skip if localStorage is not accessible
+                }
+              }
+            }
+            // Reload to pick up the injected session
+            await page.reload({ waitUntil: 'networkidle' })
+
+            // Verify the cached session actually worked — check if login form is still visible
+            const stillHasLoginForm = await page.evaluate(() => {
+              const inputs = Array.from(document.querySelectorAll('input'))
+              const hasPassword = inputs.some(i => i.type === 'password')
+              const hasEmail = inputs.some(i =>
+                i.type === 'email' ||
+                i.placeholder?.toLowerCase().includes('email') ||
+                i.name?.toLowerCase().includes('email')
+              )
+              return hasPassword && hasEmail
+            }).catch(() => false)
+
+            if (stillHasLoginForm) {
+              broadcast(runId, {
+                type: 'validation',
+                passed: false,
+                message: 'Cached session expired — performing fresh login.',
+              })
+              // Invalidate the stale cache
+              await invalidateCachedSession(auth)
+            } else {
+              broadcast(runId, {
+                type: 'validation',
+                passed: true,
+                message: 'Restored cached session — skipping login.',
+              })
+              authCompleted = true
+              usedCache = true
+            }
+          }
+          if (!usedCache) {
+            // Perform fresh login
+            const loginResult = await performLogin(page, auth, (msg) => {
+              broadcast(runId, { type: 'validation', passed: true, message: `Auth: ${msg}` })
+            })
+            geminiCalls += loginResult.geminiCalls
+
+            if (!loginResult.success) {
+              broadcast(runId, {
+                type: 'validation',
+                passed: false,
+                message: `Authentication failed: ${loginResult.error}`,
+              })
+              // Continue with test anyway — user might want to test unauthenticated behavior
+            } else {
+              authCompleted = true
+            }
+          }
+        }
+
+        // Navigate to target URL (skip if cached session already navigated)
+        const currentUrl = page.url()
+        const alreadyOnTarget = currentUrl !== 'about:blank' && currentUrl.includes(new URL(targetUrl).hostname)
+        if (!alreadyOnTarget) {
+          await page.goto(targetUrl, { waitUntil: 'networkidle', timeout: 30000 })
+        } else if (!auth || !authCompleted) {
+          // Not from cached session — do a fresh navigate
+          await page.goto(targetUrl, { waitUntil: 'networkidle', timeout: 30000 })
+        } else {
+          // Auth flow already navigated us — just wait for settle
+          await page.waitForLoadState('networkidle').catch(() => {})
+        }
         const initialScreenshot = await captureScreenshot(page)
         screenshots.push(initialScreenshot)
 
@@ -109,7 +204,7 @@ export function startWorker() {
           const stepStart = Date.now()
 
           await geminiLimiter.acquire()
-          const plan = await planNextAction(currentScreenshot, prompt, actionHistory, step)
+          const plan = await planNextAction(currentScreenshot, prompt, actionHistory, step, { authCompleted, authCredentials: auth?.credentials })
           geminiCalls++
 
           broadcast(runId, {

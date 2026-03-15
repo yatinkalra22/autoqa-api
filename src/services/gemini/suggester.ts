@@ -1,4 +1,4 @@
-import { getGeminiModel, screenshotToPart } from './client'
+import { getGeminiModel, screenshotToPart, withRetry } from './client'
 import { geminiLimiter } from './rateLimiter'
 import { browserPool, captureScreenshot } from '../playwright/engine'
 
@@ -10,7 +10,7 @@ export async function suggestTests(targetUrl: string): Promise<string[]> {
 
     await geminiLimiter.acquire()
     const model = getGeminiModel()
-    const result = await model.generateContent([
+    const result = await withRetry(() => model.generateContent([
       {
         text: `You are a QA expert. Look at this web page screenshot and suggest 5-8 practical test cases.
 
@@ -20,7 +20,7 @@ Focus on: user flows, form validation, navigation, and key business actions visi
 Example format: ["Test the login flow with valid credentials", "Verify error message for empty form submission"]`,
       },
       screenshotToPart(screenshot),
-    ])
+    ]))
 
     return JSON.parse(result.response.text()) as string[]
   } finally {

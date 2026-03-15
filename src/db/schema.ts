@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, integer, jsonb, boolean } from 'drizzle-orm/pg-core'
+import { pgTable, uuid, text, timestamp, integer, jsonb } from 'drizzle-orm/pg-core'
 
 export const testSuites = pgTable('test_suites', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -15,8 +15,20 @@ export const tests = pgTable('tests', {
   prompt: text('prompt').notNull(),
   targetUrl: text('target_url').notNull(),
   maxSteps: integer('max_steps').default(20),
+  authProfileId: uuid('auth_profile_id').references(() => authProfiles.id),
   tags: text('tags').array().default([]),
   createdAt: timestamp('created_at').defaultNow(),
+})
+
+export const authProfiles = pgTable('auth_profiles', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  domain: text('domain').notNull(),
+  loginUrl: text('login_url').notNull(),
+  credentials: jsonb('credentials').notNull().default([]),
+  submitButton: text('submit_button'),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
 })
 
 export const testRuns = pgTable('test_runs', {

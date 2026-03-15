@@ -3,11 +3,20 @@ import { z } from 'zod'
 import * as fs from 'fs/promises'
 import * as path from 'path'
 import { db } from '../db'
-import { testRuns, tests } from '../db/schema'
+import { testRuns, tests, authProfiles } from '../db/schema'
 import { runQueue } from '../services/queue/jobs'
 import { eq, desc } from 'drizzle-orm'
 import { generatePlaywrightCode } from '../services/exporter/playwright'
 import { config } from '../config'
+
+const authConfigSchema = z.object({
+  loginUrl: z.string().url(),
+  credentials: z.array(z.object({
+    field: z.string(),
+    value: z.string(),
+  })).min(1),
+  submitButton: z.string().optional(),
+}).optional()
 
 const createRunSchema = z.object({
   targetUrl: z.string().url(),
@@ -16,6 +25,8 @@ const createRunSchema = z.object({
   saveTest: z.boolean().default(false),
   testName: z.string().optional(),
   testId: z.string().uuid().optional(),
+  auth: authConfigSchema,
+  authProfileId: z.string().uuid().optional(),
 })
 
 export const runsRouter: FastifyPluginAsync = async (app) => {
@@ -29,6 +40,7 @@ export const runsRouter: FastifyPluginAsync = async (app) => {
         prompt: body.prompt,
         targetUrl: body.targetUrl,
         maxSteps: body.maxSteps,
+        authProfileId: body.authProfileId || null,
       }).returning()
       testId = test.id
     }
@@ -41,11 +53,26 @@ export const runsRouter: FastifyPluginAsync = async (app) => {
       triggeredBy: 'manual',
     }).returning()
 
+    // Resolve auth — either inline config or saved profile
+    let auth = body.auth
+    if (!auth && body.authProfileId) {
+      const [profile] = await db.select().from(authProfiles)
+        .where(eq(authProfiles.id, body.authProfileId))
+      if (profile) {
+        auth = {
+          loginUrl: profile.loginUrl,
+          credentials: profile.credentials as any,
+          submitButton: profile.submitButton || undefined,
+        }
+      }
+    }
+
     await runQueue.add('execute-test', {
       runId: run.id,
       targetUrl: body.targetUrl,
       prompt: body.prompt,
       maxSteps: body.maxSteps,
+      auth,
     })
 
     return { runId: run.id }

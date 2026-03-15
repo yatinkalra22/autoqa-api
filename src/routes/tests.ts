@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify'
 import { db } from '../db'
-import { tests, testRuns } from '../db/schema'
+import { tests, testRuns, authProfiles } from '../db/schema'
 import { runQueue } from '../services/queue/jobs'
 import { eq, desc } from 'drizzle-orm'
 
@@ -21,6 +21,19 @@ export const testsRouter: FastifyPluginAsync = async (app) => {
     const [test] = await db.select().from(tests).where(eq(tests.id, req.params.id))
     if (!test) return reply.code(404).send({ error: 'Test not found' })
 
+    // Resolve auth profile if the test has one linked
+    let auth: { loginUrl: string; credentials: Array<{ field: string; value: string }>; submitButton?: string } | undefined
+    if (test.authProfileId) {
+      const [profile] = await db.select().from(authProfiles).where(eq(authProfiles.id, test.authProfileId))
+      if (profile) {
+        auth = {
+          loginUrl: profile.loginUrl,
+          credentials: profile.credentials as any,
+          submitButton: profile.submitButton || undefined,
+        }
+      }
+    }
+
     const [run] = await db.insert(testRuns).values({
       testId: test.id,
       prompt: test.prompt,
@@ -34,6 +47,7 @@ export const testsRouter: FastifyPluginAsync = async (app) => {
       targetUrl: test.targetUrl,
       prompt: test.prompt,
       maxSteps: test.maxSteps || 20,
+      auth,
     })
 
     return { runId: run.id }

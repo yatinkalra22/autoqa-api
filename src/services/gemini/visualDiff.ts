@@ -1,4 +1,4 @@
-import { getGeminiModel, screenshotToPart } from './client'
+import { getGeminiModel, screenshotToPart, withRetry } from './client'
 
 export interface VisualDiffResult {
   hasChanges: boolean
@@ -43,11 +43,11 @@ export async function compareScreenshots(
 ): Promise<VisualDiffResult> {
   const model = getGeminiModel()
 
-  const result = await model.generateContent([
+  const result = await withRetry(() => model.generateContent([
     { text: DIFF_PROMPT },
     screenshotToPart(baselineBase64),
     screenshotToPart(currentBase64),
-  ])
+  ]))
 
   const text = result.response.text()
   return JSON.parse(text) as VisualDiffResult
