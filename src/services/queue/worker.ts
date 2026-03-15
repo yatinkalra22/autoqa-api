@@ -1,5 +1,4 @@
-import { Worker } from 'bullmq'
-import { redis } from './redis'
+import { runQueue } from './jobs'
 import { db } from '../../db'
 import { testRuns } from '../../db/schema'
 import { eq } from 'drizzle-orm'
@@ -35,9 +34,7 @@ interface StepRecord {
 }
 
 export function startWorker() {
-  const worker = new Worker<TestJobData>(
-    'test-runs',
-    async (job) => {
+  runQueue.setHandler(async (job) => {
       const { runId, targetUrl, prompt, maxSteps, auth } = job.data
       const startedAt = new Date()
       let geminiCalls = 0
@@ -310,6 +307,19 @@ export function startWorker() {
           }
 
           const result = await executeAction(page, plan.action, plan.value, x, y, locator)
+
+          // Wait for network activity to settle after interactive actions
+          // so API responses are reflected in the screenshot
+          if (['click', 'type', 'pressKey'].includes(plan.action)) {
+            try {
+              await page.waitForLoadState('networkidle', { timeout: 5000 })
+            } catch {
+              // Timeout is fine — some pages have persistent connections
+            }
+            // Extra buffer for client-side rendering after API response
+            await page.waitForTimeout(500)
+          }
+
           const screenshotAfter = await captureScreenshot(page)
           screenshots.push(screenshotAfter)
 
@@ -457,15 +467,11 @@ export function startWorker() {
       } finally {
         await release()
       }
-    },
-    { connection: redis, concurrency: 3 }
-  )
-
-  worker.on('failed', (job, err) => {
-    console.error(`Job ${job?.id} failed:`, err)
   })
 
-  return worker
+  runQueue.on('failed', (job, err) => {
+    console.error(`Job ${job?.id} failed:`, err)
+  })
 }
 
 function broadcast(runId: string, message: WSMessage) {

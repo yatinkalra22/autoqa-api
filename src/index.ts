@@ -1,10 +1,11 @@
 import Fastify from 'fastify'
 import fastifyCors from '@fastify/cors'
 import fastifyWebsocket from '@fastify/websocket'
+import fastifyHelmet from '@fastify/helmet'
+import fastifyRateLimit from '@fastify/rate-limit'
 import * as fs from 'fs/promises'
 import * as path from 'path'
 import { config } from './config'
-import { redis } from './services/queue/redis'
 import { startWorker } from './services/queue/worker'
 import { runsRouter } from './routes/runs'
 import { testsRouter } from './routes/tests'
@@ -15,7 +16,10 @@ import { suggestTests } from './services/gemini/suggester'
 import { auditAccessibility } from './services/gemini/a11yAuditor'
 import { compareScreenshots } from './services/gemini/visualDiff'
 import { browserPool, captureScreenshot } from './services/playwright/engine'
-import { getWebhooks, setWebhooks } from './services/notifier'
+import { requireAuth } from './middleware/firebaseAuth'
+import { db } from './db'
+import { sharedReports, testRuns, userWebhooks } from './db/schema'
+import { eq, and } from 'drizzle-orm'
 
 const app = Fastify({
   logger: {
@@ -26,22 +30,94 @@ const app = Fastify({
 })
 
 async function bootstrap() {
+  // Security: HTTP headers (CSP, HSTS, X-Frame-Options, etc.)
+  await app.register(fastifyHelmet, {
+    contentSecurityPolicy: false, // Disable CSP for API (frontend handles it)
+    crossOriginResourcePolicy: { policy: 'cross-origin' }, // Allow cross-origin for screenshots
+  })
+
+  // Security: Rate limiting
+  await app.register(fastifyRateLimit, {
+    max: 100,           // 100 requests per window
+    timeWindow: '1 minute',
+    keyGenerator: (req) => {
+      // Rate limit by user ID if authenticated, otherwise by IP
+      return req.user?.uid || req.ip
+    },
+  })
+
   await app.register(fastifyCors, { origin: config.corsOrigins })
   await app.register(fastifyWebsocket)
 
+  // Health check — no auth required
   app.get('/health', async () => ({
     status: 'ok',
     version: '1.0.0',
-    redis: redis.status === 'ready' ? 'connected' : 'disconnected',
   }))
 
+  // Authenticated route groups
   await app.register(runsRouter, { prefix: '/api/runs' })
   await app.register(testsRouter, { prefix: '/api/tests' })
   await app.register(webhooksRouter, { prefix: '/api/webhooks' })
   await app.register(authProfilesRouter, { prefix: '/api/auth-profiles' })
 
-  // Report serving
-  app.get<{ Params: { runId: string } }>('/api/reports/:runId', async (req, reply) => {
+  // Shared report viewing — PUBLIC (no auth required)
+  app.get<{ Params: { shareId: string } }>('/api/shared/:shareId', async (req, reply) => {
+    const [shared] = await db.select().from(sharedReports)
+      .where(eq(sharedReports.id, req.params.shareId))
+    if (!shared) return reply.code(404).send({ error: 'Shared report not found' })
+
+    const [run] = await db.select().from(testRuns)
+      .where(eq(testRuns.id, shared.runId))
+    if (!run) return reply.code(404).send({ error: 'Run not found' })
+
+    // Reconstruct narrations
+    const steps = (run.steps as any[]) ?? []
+    const narrations: Array<{ step: number; text: string; type: string; success?: boolean }> = []
+    for (const s of steps) {
+      if (s.narration) {
+        narrations.push({ step: s.step, text: s.narration, type: 'action', success: s.success })
+      }
+    }
+    if (run.summary) {
+      narrations.push({ step: 0, text: run.summary, type: 'summary', success: run.status === 'PASS' })
+    }
+
+    let lastScreenshotDataUrl = ''
+    try {
+      const screenshotPath = path.join(config.localStoragePath, `screenshot-${run.id}.png`)
+      const buf = await fs.readFile(screenshotPath)
+      lastScreenshotDataUrl = `data:image/png;base64,${buf.toString('base64')}`
+    } catch {
+      // No screenshot
+    }
+
+    // Return sanitized data (no userId, no error messages)
+    return {
+      id: run.id,
+      prompt: run.prompt,
+      targetUrl: run.targetUrl,
+      status: run.status,
+      steps: run.steps,
+      summary: run.summary,
+      durationMs: run.durationMs,
+      narrations,
+      lastScreenshotDataUrl,
+      sharedBy: shared.userId,
+      sharedAt: shared.createdAt,
+    }
+  })
+
+  // Report serving — requires auth, user must own the run
+  app.get<{ Params: { runId: string } }>('/api/reports/:runId', {
+    preHandler: requireAuth,
+  }, async (req, reply) => {
+    const userId = req.user!.uid
+    // Verify ownership
+    const [run] = await db.select().from(testRuns)
+      .where(and(eq(testRuns.id, req.params.runId), eq(testRuns.userId, userId)))
+    if (!run) return reply.code(404).send('Report not found')
+
     const reportPath = path.join(config.localStoragePath, `report-${req.params.runId}.html`)
     try {
       const html = await fs.readFile(reportPath, 'utf8')
@@ -51,8 +127,10 @@ async function bootstrap() {
     }
   })
 
-  // AI test suggestions
-  app.post<{ Body: { targetUrl: string } }>('/api/suggest', async (req, reply) => {
+  // AI test suggestions — requires auth
+  app.post<{ Body: { targetUrl: string } }>('/api/suggest', {
+    preHandler: requireAuth,
+  }, async (req, reply) => {
     const { targetUrl } = req.body
     if (!targetUrl) return reply.code(400).send({ error: 'targetUrl is required' })
     try {
@@ -63,8 +141,10 @@ async function bootstrap() {
     }
   })
 
-  // Accessibility audit
-  app.post<{ Body: { targetUrl: string } }>('/api/a11y', async (req, reply) => {
+  // Accessibility audit — requires auth
+  app.post<{ Body: { targetUrl: string } }>('/api/a11y', {
+    preHandler: requireAuth,
+  }, async (req, reply) => {
     const { targetUrl } = req.body
     if (!targetUrl) return reply.code(400).send({ error: 'targetUrl is required' })
     try {
@@ -82,12 +162,25 @@ async function bootstrap() {
     }
   })
 
-  // Visual regression comparison
-  app.post<{ Body: { baselineRunId: string; currentRunId: string } }>('/api/compare', async (req, reply) => {
+  // Visual regression comparison — requires auth
+  app.post<{ Body: { baselineRunId: string; currentRunId: string } }>('/api/compare', {
+    preHandler: requireAuth,
+  }, async (req, reply) => {
     const { baselineRunId, currentRunId } = req.body
+    const userId = req.user!.uid
     if (!baselineRunId || !currentRunId) {
       return reply.code(400).send({ error: 'baselineRunId and currentRunId are required' })
     }
+
+    // Verify both runs belong to this user
+    const [baseline] = await db.select().from(testRuns)
+      .where(and(eq(testRuns.id, baselineRunId), eq(testRuns.userId, userId)))
+    const [current] = await db.select().from(testRuns)
+      .where(and(eq(testRuns.id, currentRunId), eq(testRuns.userId, userId)))
+    if (!baseline || !current) {
+      return reply.code(404).send({ error: 'One or both runs not found' })
+    }
+
     try {
       const baselinePath = path.join(config.localStoragePath, `screenshot-${baselineRunId}.png`)
       const currentPath = path.join(config.localStoragePath, `screenshot-${currentRunId}.png`)
@@ -115,17 +208,41 @@ async function bootstrap() {
     }
   })
 
-  // Notification webhooks settings
-  app.get('/api/settings/webhooks', async () => {
-    return { webhooks: getWebhooks() }
+  // Notification webhook settings — per-user, stored in DB
+  app.get('/api/settings/webhooks', {
+    preHandler: requireAuth,
+  }, async (req) => {
+    const userId = req.user!.uid
+    const webhooks = await db.select().from(userWebhooks)
+      .where(eq(userWebhooks.userId, userId))
+    return {
+      webhooks: webhooks.map(w => ({ url: w.url, type: w.type as 'slack' | 'generic' })),
+    }
   })
 
   app.put<{ Body: { webhooks: Array<{ url: string; type: 'slack' | 'generic' }> } }>(
     '/api/settings/webhooks',
+    { preHandler: requireAuth },
     async (req) => {
+      const userId = req.user!.uid
       const { webhooks } = req.body
-      setWebhooks(webhooks || [])
-      return { webhooks: getWebhooks() }
+
+      // Delete existing and insert new
+      await db.delete(userWebhooks).where(eq(userWebhooks.userId, userId))
+      if (webhooks && webhooks.length > 0) {
+        const valid = webhooks.filter(w => w.url.trim())
+        if (valid.length > 0) {
+          await db.insert(userWebhooks).values(
+            valid.map(w => ({ userId, url: w.url, type: w.type }))
+          )
+        }
+      }
+
+      const saved = await db.select().from(userWebhooks)
+        .where(eq(userWebhooks.userId, userId))
+      return {
+        webhooks: saved.map(w => ({ url: w.url, type: w.type as 'slack' | 'generic' })),
+      }
     }
   )
 

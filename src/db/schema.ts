@@ -16,6 +16,7 @@ export const tests = pgTable('tests', {
   targetUrl: text('target_url').notNull(),
   maxSteps: integer('max_steps').default(20),
   authProfileId: uuid('auth_profile_id').references(() => authProfiles.id),
+  userId: text('user_id'),
   tags: text('tags').array().default([]),
   createdAt: timestamp('created_at').defaultNow(),
 })
@@ -27,6 +28,7 @@ export const authProfiles = pgTable('auth_profiles', {
   loginUrl: text('login_url').notNull(),
   credentials: jsonb('credentials').notNull().default([]),
   submitButton: text('submit_button'),
+  userId: text('user_id'),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 })
@@ -46,4 +48,22 @@ export const testRuns = pgTable('test_runs', {
   durationMs: integer('duration_ms'),
   triggeredBy: text('triggered_by').notNull().default('manual'),
   geminiCalls: integer('gemini_calls').notNull().default(0),
+  userId: text('user_id'),
+})
+
+// Shared report links — publicly accessible
+export const sharedReports = pgTable('shared_reports', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  runId: uuid('run_id').references(() => testRuns.id).notNull(),
+  userId: text('user_id').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+})
+
+// Per-user webhook settings (moved from in-memory to DB)
+export const userWebhooks = pgTable('user_webhooks', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: text('user_id').notNull(),
+  url: text('url').notNull(),
+  type: text('type').notNull().default('slack'),
+  createdAt: timestamp('created_at').defaultNow(),
 })

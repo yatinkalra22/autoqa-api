@@ -1,3 +1,7 @@
+import { db } from '../db'
+import { userWebhooks, testRuns } from '../db/schema'
+import { eq } from 'drizzle-orm'
+
 interface NotifyPayload {
   runId: string
   status: 'PASS' | 'FAIL' | 'ERROR'
@@ -14,22 +18,20 @@ interface WebhookConfig {
   type: 'slack' | 'generic'
 }
 
-// In-memory config (persists for server lifetime; could be moved to DB)
-let webhooks: WebhookConfig[] = []
-
-export function getWebhooks() {
-  return webhooks
-}
-
-export function setWebhooks(configs: WebhookConfig[]) {
-  webhooks = configs
-}
-
 export async function notifyRunComplete(payload: NotifyPayload) {
+  // Look up the userId from the run, then fetch their webhooks
+  const [run] = await db.select().from(testRuns).where(eq(testRuns.id, payload.runId))
+  if (!run?.userId) return
+
+  const webhooks = await db.select().from(userWebhooks)
+    .where(eq(userWebhooks.userId, run.userId))
   if (webhooks.length === 0) return
 
   await Promise.allSettled(
-    webhooks.map(wh => sendWebhook(wh, payload))
+    webhooks.map(wh => sendWebhook(
+      { url: wh.url, type: wh.type as 'slack' | 'generic' },
+      payload
+    ))
   )
 }
 

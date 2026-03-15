@@ -176,7 +176,7 @@ export async function executeAction(
           }
         }
 
-        await page.waitForTimeout(300)
+        await page.waitForTimeout(800)
         break
       }
 
