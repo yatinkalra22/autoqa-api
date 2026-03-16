@@ -404,18 +404,9 @@ export function startWorker() {
         const completedAt = new Date()
         const durationMs = completedAt.getTime() - startedAt.getTime()
 
-        // Save final screenshot for visual regression
         const finalScreenshot = screenshots[screenshots.length - 1]
-        if (finalScreenshot) {
-          const screenshotDir = config.localStoragePath
-          await fs.mkdir(screenshotDir, { recursive: true })
-          await fs.writeFile(
-            path.join(screenshotDir, `screenshot-${runId}.png`),
-            Buffer.from(finalScreenshot, 'base64')
-          )
-        }
 
-        const reportUrl = await generateReport(runId, {
+        const report = await generateReport(runId, {
           prompt,
           targetUrl,
           status: finalStatus,
@@ -430,7 +421,9 @@ export function startWorker() {
           completedAt,
           steps: steps as any,
           summary: validation.explanation,
-          reportUrl,
+          reportUrl: report.url,
+          reportHtml: report.html,
+          screenshotBase64: finalScreenshot || null,
           durationMs,
           geminiCalls,
         }).where(eq(testRuns.id, runId))
@@ -439,7 +432,7 @@ export function startWorker() {
           type: 'run_complete',
           status: finalStatus,
           summary: validation.explanation,
-          reportUrl: reportUrl || '',
+          reportUrl: report.url || '',
           durationMs,
           screenshotDataUrl: finalScreenshot ? `data:image/png;base64,${finalScreenshot}` : undefined,
         })
@@ -451,7 +444,7 @@ export function startWorker() {
           targetUrl,
           summary: validation.explanation,
           durationMs,
-          reportUrl,
+          reportUrl: report.url,
           stepsCount: steps.length,
         }).catch(() => {})
       } catch (err: any) {

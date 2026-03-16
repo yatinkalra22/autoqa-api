@@ -107,22 +107,43 @@ export const runsRouter: FastifyPluginAsync = async (app) => {
       narrations.push({ step: 0, text: run.summary, type: 'summary', success: run.status === 'PASS' })
     }
 
-    // Read the final saved screenshot from disk
+    // Serve screenshot from DB (persistent across deploys)
     let lastScreenshotDataUrl = ''
-    try {
-      const screenshotPath = path.join(config.localStoragePath, `screenshot-${run.id}.png`)
-      const buf = await fs.readFile(screenshotPath)
-      lastScreenshotDataUrl = `data:image/png;base64,${buf.toString('base64')}`
-    } catch {
-      // Screenshot not available
+    if (run.screenshotBase64) {
+      lastScreenshotDataUrl = `data:image/png;base64,${run.screenshotBase64}`
+    } else {
+      // Fallback to filesystem for old runs
+      try {
+        const screenshotPath = path.join(config.localStoragePath, `screenshot-${run.id}.png`)
+        const buf = await fs.readFile(screenshotPath)
+        lastScreenshotDataUrl = `data:image/png;base64,${buf.toString('base64')}`
+      } catch {
+        // Screenshot not available
+      }
     }
 
-    return { ...run, narrations, lastScreenshotDataUrl }
+    const { reportHtml: _rh, screenshotBase64: _sb, ...runData } = run
+    return { ...runData, narrations, lastScreenshotDataUrl }
   })
 
   app.get('/', async (req) => {
     const userId = req.user!.uid
-    return db.select().from(testRuns)
+    return db.select({
+      id: testRuns.id,
+      testId: testRuns.testId,
+      prompt: testRuns.prompt,
+      targetUrl: testRuns.targetUrl,
+      status: testRuns.status,
+      startedAt: testRuns.startedAt,
+      completedAt: testRuns.completedAt,
+      summary: testRuns.summary,
+      reportUrl: testRuns.reportUrl,
+      errorMessage: testRuns.errorMessage,
+      durationMs: testRuns.durationMs,
+      triggeredBy: testRuns.triggeredBy,
+      geminiCalls: testRuns.geminiCalls,
+      userId: testRuns.userId,
+    }).from(testRuns)
       .where(eq(testRuns.userId, userId))
       .orderBy(desc(testRuns.startedAt))
       .limit(50)

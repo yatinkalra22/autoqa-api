@@ -114,6 +114,12 @@ async function bootstrap() {
       .where(eq(testRuns.id, req.params.runId))
     if (!run) return reply.code(404).send('Report not found')
 
+    // Serve from DB (persistent) with filesystem cache fallback
+    if (run.reportHtml) {
+      return reply.type('text/html').send(run.reportHtml)
+    }
+
+    // Fallback to filesystem (for runs created before DB storage)
     const reportPath = path.join(config.localStoragePath, `report-${req.params.runId}.html`)
     try {
       const html = await fs.readFile(reportPath, 'utf8')

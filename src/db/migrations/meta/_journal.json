@@ -29,6 +29,13 @@
       "when": 1773600000000,
       "tag": "0003_add_auth_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1773700000000,
+      "tag": "0004_add_report_and_screenshot",
+      "breakpoints": true
     }
   ]
 }

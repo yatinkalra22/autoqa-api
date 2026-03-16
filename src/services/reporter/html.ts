@@ -23,7 +23,7 @@ interface ReportOptions {
   durationMs: number
 }
 
-export async function generateReport(runId: string, opts: ReportOptions): Promise<string> {
+export async function generateReport(runId: string, opts: ReportOptions): Promise<{ url: string; html: string }> {
   const { prompt, targetUrl, status, steps, screenshots, summary, durationMs } = opts
 
   const isPassed = status === 'PASS'
@@ -124,12 +124,16 @@ export async function generateReport(runId: string, opts: ReportOptions): Promis
 </body>
 </html>`
 
-  const reportDir = config.localStoragePath
-  await fs.mkdir(reportDir, { recursive: true })
-  const filename = `report-${runId}.html`
-  await fs.writeFile(path.join(reportDir, filename), html, 'utf8')
+  // Also write to disk as a cache (ephemeral on Cloud Run)
+  try {
+    const reportDir = config.localStoragePath
+    await fs.mkdir(reportDir, { recursive: true })
+    await fs.writeFile(path.join(reportDir, `report-${runId}.html`), html, 'utf8')
+  } catch {
+    // Disk write is best-effort; DB is the source of truth
+  }
 
-  return `/api/reports/${runId}`
+  return { url: `/api/reports/${runId}`, html }
 }
 
 function escapeHtml(str: string): string {

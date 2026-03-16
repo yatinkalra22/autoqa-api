@@ -4,4 +4,5 @@ storage/
 .env
 .deploy.env
 *.log
-SUBMISSION.md
+docs/SUBMISSION.md
+docs/DEMO_SCRIPT.md

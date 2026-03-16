@@ -49,6 +49,8 @@ export const testRuns = pgTable('test_runs', {
   triggeredBy: text('triggered_by').notNull().default('manual'),
   geminiCalls: integer('gemini_calls').notNull().default(0),
   userId: text('user_id'),
+  reportHtml: text('report_html'),
+  screenshotBase64: text('screenshot_base64'),
 })
 
 // Shared report links — publicly accessible
