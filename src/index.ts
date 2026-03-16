@@ -183,29 +183,37 @@ async function bootstrap() {
       return reply.code(404).send({ error: 'One or both runs not found' })
     }
 
-    try {
-      const baselinePath = path.join(config.localStoragePath, `screenshot-${baselineRunId}.png`)
-      const currentPath = path.join(config.localStoragePath, `screenshot-${currentRunId}.png`)
+    // Read screenshots from DB first, fall back to filesystem
+    let baselineB64 = baseline.screenshotBase64
+    let currentB64 = current.screenshotBase64
 
-      const [baselineBuffer, currentBuffer] = await Promise.all([
-        fs.readFile(baselinePath),
-        fs.readFile(currentPath),
-      ])
-
-      const diff = await compareScreenshots(
-        baselineBuffer.toString('base64'),
-        currentBuffer.toString('base64')
-      )
-
-      return {
-        ...diff,
-        baselineScreenshot: `data:image/png;base64,${baselineBuffer.toString('base64')}`,
-        currentScreenshot: `data:image/png;base64,${currentBuffer.toString('base64')}`,
-      }
-    } catch (err: any) {
-      if (err.code === 'ENOENT') {
+    if (!baselineB64 || !currentB64) {
+      try {
+        if (!baselineB64) {
+          const buf = await fs.readFile(path.join(config.localStoragePath, `screenshot-${baselineRunId}.png`))
+          baselineB64 = buf.toString('base64')
+        }
+        if (!currentB64) {
+          const buf = await fs.readFile(path.join(config.localStoragePath, `screenshot-${currentRunId}.png`))
+          currentB64 = buf.toString('base64')
+        }
+      } catch {
         return reply.code(404).send({ error: 'Screenshot not found for one or both runs' })
       }
+    }
+
+    if (!baselineB64 || !currentB64) {
+      return reply.code(404).send({ error: 'Screenshot not found for one or both runs' })
+    }
+
+    try {
+      const diff = await compareScreenshots(baselineB64, currentB64)
+      return {
+        ...diff,
+        baselineScreenshot: `data:image/png;base64,${baselineB64}`,
+        currentScreenshot: `data:image/png;base64,${currentB64}`,
+      }
+    } catch (err: any) {
       return reply.code(500).send({ error: err.message || 'Comparison failed' })
     }
   })
