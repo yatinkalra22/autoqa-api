@@ -47,11 +47,9 @@ declare module 'fastify' {
  */
 export async function requireAuth(request: FastifyRequest, reply: FastifyReply) {
   const authHeader = request.headers.authorization
-  if (!authHeader?.startsWith('Bearer ')) {
-    return reply.code(401).send({ error: 'Authentication required' })
-  }
+  const queryToken = (request.query as Record<string, string>)?.token
 
-  const token = authHeader.slice(7)
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : queryToken
   if (!token) {
     return reply.code(401).send({ error: 'Authentication required' })
   }

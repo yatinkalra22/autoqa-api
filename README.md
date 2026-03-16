@@ -10,15 +10,16 @@
 | Auth | Firebase Admin SDK (JWT verification) |
 | AI | Google Gemini 2.5 Flash (Vision) |
 | Browser | Playwright (Chromium) |
-| Queue | BullMQ + Redis |
+| Queue | In-memory job queue (zero dependencies) |
 | Database | PostgreSQL + Drizzle ORM |
 | Security | Helmet, rate limiting, per-user data scoping |
 | Images | Sharp (screenshot annotation) |
+| Deploy | GCP Cloud Run + Cloud SQL |
 
 ## Quick Start
 
 ```bash
-# 1. Start infrastructure
+# 1. Start PostgreSQL
 docker-compose up -d
 
 # 2. Install dependencies
@@ -26,7 +27,7 @@ pnpm install
 
 # 3. Configure environment
 cp .env.example .env
-# Edit .env — add GEMINI_API_KEY and Firebase service account
+# Edit .env — add GEMINI_API_KEY and FIREBASE_PROJECT_ID
 
 # 4. Install Playwright browsers
 npx playwright install chromium
@@ -38,23 +39,23 @@ pnpm db:migrate
 pnpm dev
 ```
 
-The API runs on `http://localhost:3001`.
+The API runs on the port specified in `.env` (default `3001`).
 
 ### Firebase Setup
 
-The API verifies Firebase ID tokens from the frontend. You need to provide Firebase Admin credentials via one of:
+The API verifies Firebase ID tokens from the frontend. Configure via one of:
 
-1. **Service account JSON** (recommended for local dev):
-   ```
-   FIREBASE_SERVICE_ACCOUNT_KEY={"type":"service_account","project_id":"..."}
-   ```
-
-2. **Project ID only** (for Cloud Run/GCE with Application Default Credentials):
+1. **Project ID only** (simplest — works locally and on GCP):
    ```
    FIREBASE_PROJECT_ID=your-firebase-project-id
    ```
 
-3. **Service account file path**:
+2. **Service account JSON** (for non-GCP environments):
+   ```
+   FIREBASE_SERVICE_ACCOUNT_KEY={"type":"service_account","project_id":"..."}
+   ```
+
+3. **Application Default Credentials** (auto-detected on GCP):
    ```
    GOOGLE_APPLICATION_CREDENTIALS=/path/to/serviceAccount.json
    ```
@@ -118,7 +119,7 @@ WS   /ws/runs/:id                 Real-time run updates
 User (Firebase JWT)
     → Fastify API (auth middleware verifies token)
         → User-scoped DB queries (Drizzle + Postgres)
-        → BullMQ Queue (Redis)
+        → In-memory Job Queue (concurrency-limited)
             → Playwright Browser (screenshots)
             → Gemini Vision API (action planning)
             → Execute action at coordinates
@@ -141,7 +142,7 @@ src/
 ├── services/
 │   ├── gemini/             # AI vision services (planner, detector, validator, etc.)
 │   ├── playwright/         # Browser pool, screenshot capture, action execution
-│   ├── queue/              # BullMQ jobs + worker (main test execution loop)
+│   ├── queue/              # In-memory job queue + worker (main test execution loop)
 │   ├── auth/               # Session caching for login automation
 │   ├── reporter/           # HTML report + screenshot annotation
 │   ├── exporter/           # Playwright code export
@@ -158,32 +159,50 @@ src/
 
 ## Database Migration
 
-After adding auth columns:
-
 ```bash
 pnpm db:migrate
 ```
 
-This runs migration `0003_add_auth_columns.sql` which:
-- Adds `user_id` to `tests`, `test_runs`, and `auth_profiles`
-- Creates `shared_reports` table for public report sharing
-- Creates `user_webhooks` table (replaces in-memory storage)
-- Adds indexes for efficient user-scoped queries
+Migrations are in `src/db/migrations/` and run automatically via Drizzle's migrator. Key migrations:
+- `0003_add_auth_columns.sql` — Adds `user_id` to all tables, creates `shared_reports` and `user_webhooks` tables, adds indexes for user-scoped queries.
 
 ## Deployment
 
-```bash
-# Build Docker image
-docker build -t autoqa-api .
+See [deploy/DEPLOYMENT.md](deploy/DEPLOYMENT.md) for the full deployment guide.
 
-# Or deploy to Railway
-railway up
+### Quick Deploy (GCP Cloud Run)
+
+```bash
+# 0. Create deploy config (one-time, gitignored)
+cp .deploy.env.example .deploy.env
+# Edit .deploy.env with your GCP_PROJECT_ID
+
+# 1. Provision infrastructure (one-time)
+./deploy/gcp-setup.sh
+
+# 2. Create database URL secret (one-time)
+./deploy/create-db-url-secret.sh
+
+# 3. Run database migrations
+./deploy/migrate.sh
+
+# 4. Build and deploy
+./deploy/deploy.sh
 ```
 
-Set these environment variables in production:
-- `DATABASE_URL` — PostgreSQL connection string
-- `REDIS_URL` — Redis connection string
-- `GEMINI_API_KEY` — Google Gemini API key
-- `FIREBASE_SERVICE_ACCOUNT_KEY` or `FIREBASE_PROJECT_ID`
-- `CORS_ORIGINS` — Frontend URL(s)
-- `WEBHOOK_SECRET` — For CI webhook authentication
+### CI/CD
+
+Push to `main` triggers automatic deployment via Cloud Build. See `cloudbuild.yaml`.
+
+### Environment Variables (Production)
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `DATABASE_URL` | Yes | PostgreSQL connection string |
+| `GEMINI_API_KEY` | Yes | Google Gemini API key |
+| `FIREBASE_PROJECT_ID` | Yes | Firebase project ID for token verification |
+| `PORT` | No | Server port (default: `3001`, Cloud Run uses `8080`) |
+| `CORS_ORIGINS` | No | Comma-separated frontend URLs |
+| `MAX_CONCURRENT_BROWSERS` | No | Parallel browser instances (default: `3`) |
+| `STORAGE_TYPE` | No | `local` or `s3` (default: `local`) |
+| `WEBHOOK_SECRET` | No | For CI webhook authentication |

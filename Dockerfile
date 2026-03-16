@@ -26,9 +26,14 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package.json ./
 
+# Copy migrations for runtime db:migrate
+COPY --from=builder /app/src/db/migrations ./src/db/migrations
+COPY --from=builder /app/drizzle.config.ts ./
+
 RUN npx playwright install chromium --with-deps
 
 ENV NODE_ENV=production
-EXPOSE 3001
+# Cloud Run injects PORT env var
+EXPOSE 8080
 
 CMD ["node", "dist/index.js"]

@@ -1,0 +1,10 @@
+node_modules
+dist
+storage
+.env
+.env.*
+*.md
+docs
+deploy
+.git
+.gitignore
