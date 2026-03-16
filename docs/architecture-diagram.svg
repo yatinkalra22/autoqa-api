@@ -1,0 +1,140 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" font-family="Inter, -apple-system, sans-serif">
+  <defs>
+    <filter id="shadow" x="-4%" y="-4%" width="108%" height="108%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.1"/>
+    </filter>
+    <linearGradient id="geminiGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4285F4"/>
+      <stop offset="100%" style="stop-color:#1A73E8"/>
+    </linearGradient>
+    <linearGradient id="gcpGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#34A853"/>
+      <stop offset="100%" style="stop-color:#0D652D"/>
+    </linearGradient>
+    <linearGradient id="browserGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#EA4335"/>
+      <stop offset="100%" style="stop-color:#C5221F"/>
+    </linearGradient>
+    <linearGradient id="apiGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FBBC04"/>
+      <stop offset="100%" style="stop-color:#F29900"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="800" fill="#FAFAFA" rx="12"/>
+
+  <!-- Title -->
+  <text x="600" y="45" text-anchor="middle" font-size="24" font-weight="700" fill="#202124">AutoQA — Architecture</text>
+  <text x="600" y="68" text-anchor="middle" font-size="13" fill="#5F6368">AI-Powered Browser Testing Agent | Gemini 2.5 Flash + Playwright</text>
+
+  <!-- Frontend Box -->
+  <rect x="460" y="90" width="280" height="60" rx="10" fill="#fff" stroke="#4285F4" stroke-width="2" filter="url(#shadow)"/>
+  <text x="600" y="118" text-anchor="middle" font-size="14" font-weight="600" fill="#202124">Frontend (React + TypeScript)</text>
+  <text x="600" y="136" text-anchor="middle" font-size="11" fill="#5F6368">autoqa-web.vercel.app</text>
+
+  <!-- Arrow: Frontend -> API -->
+  <line x1="600" y1="150" x2="600" y2="185" stroke="#4285F4" stroke-width="2" marker-end="url(#arrowBlue)"/>
+  <defs><marker id="arrowBlue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#4285F4"/></marker></defs>
+  <text x="640" y="172" font-size="10" fill="#5F6368">HTTP + WebSocket</text>
+
+  <!-- GCP Cloud Run Box -->
+  <rect x="80" y="185" width="1040" height="400" rx="12" fill="none" stroke="#34A853" stroke-width="2" stroke-dasharray="8,4"/>
+  <text x="105" y="210" font-size="12" font-weight="600" fill="#34A853">GCP Cloud Run (us-central1)</text>
+
+  <!-- API Server -->
+  <rect x="370" y="225" width="460" height="65" rx="10" fill="url(#apiGrad)" filter="url(#shadow)"/>
+  <text x="600" y="253" text-anchor="middle" font-size="15" font-weight="700" fill="#fff">Fastify API Server</text>
+  <text x="600" y="273" text-anchor="middle" font-size="11" fill="#fff">Firebase Auth | Rate Limiting | Helmet | CORS</text>
+
+  <!-- Arrow: API -> Queue -->
+  <line x1="600" y1="290" x2="600" y2="320" stroke="#5F6368" stroke-width="2" marker-end="url(#arrowGray)"/>
+  <defs><marker id="arrowGray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#5F6368"/></marker></defs>
+
+  <!-- Job Queue -->
+  <rect x="430" y="320" width="340" height="45" rx="8" fill="#fff" stroke="#5F6368" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="600" y="348" text-anchor="middle" font-size="13" font-weight="600" fill="#202124">In-Memory Job Queue (3 concurrent)</text>
+
+  <!-- Arrow: Queue -> Test Loop -->
+  <line x1="600" y1="365" x2="600" y2="395" stroke="#5F6368" stroke-width="2" marker-end="url(#arrowGray)"/>
+
+  <!-- Test Execution Loop -->
+  <rect x="180" y="395" width="840" height="170" rx="10" fill="#F8F9FA" stroke="#DADCE0" stroke-width="1.5"/>
+  <text x="600" y="420" text-anchor="middle" font-size="13" font-weight="700" fill="#202124">Autonomous Test Execution Loop</text>
+
+  <!-- Playwright Box -->
+  <rect x="200" y="435" width="200" height="115" rx="8" fill="url(#browserGrad)" filter="url(#shadow)"/>
+  <text x="300" y="462" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">Playwright</text>
+  <text x="300" y="480" text-anchor="middle" font-size="10" fill="#FFD6D2">Headless Chromium</text>
+  <line x1="220" y1="490" x2="380" y2="490" stroke="#FFD6D2" stroke-width="0.5"/>
+  <text x="300" y="508" text-anchor="middle" font-size="10" fill="#FFD6D2">Navigate &amp; Screenshot</text>
+  <text x="300" y="524" text-anchor="middle" font-size="10" fill="#FFD6D2">Click, Type, Scroll</text>
+  <text x="300" y="540" text-anchor="middle" font-size="10" fill="#FFD6D2">DOM + Vision Selectors</text>
+
+  <!-- Arrow: Playwright <-> Gemini -->
+  <line x1="400" y1="490" x2="480" y2="490" stroke="#4285F4" stroke-width="2" marker-end="url(#arrowBlue)"/>
+  <text x="440" y="482" text-anchor="middle" font-size="9" fill="#4285F4">screenshots</text>
+  <line x1="480" y1="500" x2="400" y2="500" stroke="#EA4335" stroke-width="2" marker-end="url(#arrowRed)"/>
+  <defs><marker id="arrowRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#EA4335"/></marker></defs>
+  <text x="440" y="514" text-anchor="middle" font-size="9" fill="#EA4335">actions</text>
+
+  <!-- Gemini Box -->
+  <rect x="480" y="435" width="250" height="115" rx="8" fill="url(#geminiGrad)" filter="url(#shadow)"/>
+  <text x="605" y="462" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">Gemini 2.5 Flash</text>
+  <text x="605" y="478" text-anchor="middle" font-size="10" fill="#D2E3FC">Google GenAI SDK</text>
+  <line x1="500" y1="488" x2="710" y2="488" stroke="#D2E3FC" stroke-width="0.5"/>
+  <text x="605" y="505" text-anchor="middle" font-size="10" fill="#D2E3FC">Planner — next action</text>
+  <text x="605" y="519" text-anchor="middle" font-size="10" fill="#D2E3FC">Detector — element coords</text>
+  <text x="605" y="533" text-anchor="middle" font-size="10" fill="#D2E3FC">Verifier — action effects</text>
+  <text x="605" y="547" text-anchor="middle" font-size="10" fill="#D2E3FC">Validator — pass/fail</text>
+
+  <!-- Additional Gemini Services -->
+  <rect x="755" y="435" width="250" height="115" rx="8" fill="#E8F0FE" stroke="#4285F4" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="880" y="462" text-anchor="middle" font-size="13" font-weight="600" fill="#1A73E8">Gemini AI Services</text>
+  <line x1="775" y1="472" x2="985" y2="472" stroke="#4285F4" stroke-width="0.5"/>
+  <text x="880" y="492" text-anchor="middle" font-size="10" fill="#1A73E8">Test Suggester</text>
+  <text x="880" y="508" text-anchor="middle" font-size="10" fill="#1A73E8">A11y Auditor (WCAG 2.1)</text>
+  <text x="880" y="524" text-anchor="middle" font-size="10" fill="#1A73E8">Visual Diff / Regression</text>
+  <text x="880" y="540" text-anchor="middle" font-size="10" fill="#1A73E8">Blocker Detector</text>
+
+  <!-- Bottom row: DB, Storage, Notifications -->
+  <!-- Cloud SQL -->
+  <rect x="120" y="620" width="230" height="70" rx="10" fill="url(#gcpGrad)" filter="url(#shadow)"/>
+  <text x="235" y="650" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">Cloud SQL (PostgreSQL)</text>
+  <text x="235" y="670" text-anchor="middle" font-size="10" fill="#C8E6C9">Drizzle ORM | Per-user scoping</text>
+
+  <!-- Arrow: API -> DB -->
+  <line x1="450" y1="290" x2="235" y2="615" stroke="#34A853" stroke-width="1.5" stroke-dasharray="5,3"/>
+
+  <!-- Secret Manager -->
+  <rect x="390" y="620" width="200" height="70" rx="10" fill="#fff" stroke="#34A853" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="490" y="650" text-anchor="middle" font-size="13" font-weight="600" fill="#202124">Secret Manager</text>
+  <text x="490" y="670" text-anchor="middle" font-size="10" fill="#5F6368">API keys, DB URL, creds</text>
+
+  <!-- WebSocket -->
+  <rect x="630" y="620" width="190" height="70" rx="10" fill="#fff" stroke="#4285F4" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="725" y="650" text-anchor="middle" font-size="13" font-weight="600" fill="#202124">WebSocket</text>
+  <text x="725" y="670" text-anchor="middle" font-size="10" fill="#5F6368">Real-time test updates</text>
+
+  <!-- Webhooks -->
+  <rect x="860" y="620" width="210" height="70" rx="10" fill="#fff" stroke="#FBBC04" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="965" y="650" text-anchor="middle" font-size="13" font-weight="600" fill="#202124">Webhooks / Slack</text>
+  <text x="965" y="670" text-anchor="middle" font-size="10" fill="#5F6368">Test completion alerts</text>
+
+  <!-- Firebase Auth (side) -->
+  <rect x="100" y="225" width="220" height="65" rx="10" fill="#fff" stroke="#FBBC04" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="210" y="253" text-anchor="middle" font-size="13" font-weight="600" fill="#202124">Firebase Auth</text>
+  <text x="210" y="273" text-anchor="middle" font-size="10" fill="#5F6368">Google Sign-In | JWT verify</text>
+
+  <!-- Arrow: Firebase -> API -->
+  <line x1="320" y1="257" x2="370" y2="257" stroke="#FBBC04" stroke-width="2" marker-end="url(#arrowYellow)"/>
+  <defs><marker id="arrowYellow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#FBBC04"/></marker></defs>
+
+  <!-- Cloud Build (side) -->
+  <rect x="880" y="225" width="220" height="65" rx="10" fill="#fff" stroke="#34A853" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="990" y="253" text-anchor="middle" font-size="13" font-weight="600" fill="#202124">Cloud Build</text>
+  <text x="990" y="273" text-anchor="middle" font-size="10" fill="#5F6368">CI/CD on push to main</text>
+
+  <!-- Footer -->
+  <text x="600" y="780" text-anchor="middle" font-size="11" fill="#9AA0A6">AutoQA — Gemini Live Agent Challenge 2026 | UI Navigator Category</text>
+</svg>

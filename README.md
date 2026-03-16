@@ -166,6 +166,65 @@ pnpm db:migrate
 Migrations are in `src/db/migrations/` and run automatically via Drizzle's migrator. Key migrations:
 - `0003_add_auth_columns.sql` — Adds `user_id` to all tables, creates `shared_reports` and `user_webhooks` tables, adds indexes for user-scoped queries.
 
+## Testing Instructions (For Judges)
+
+### Option A: Use the live deployment
+
+1. Visit **https://autoqa-web.vercel.app**
+2. Sign in with Google
+3. Enter any public URL (e.g. `https://example.com`) and a test prompt like "Verify the page loads and has a heading"
+4. Click **Run Test** and watch the AI agent execute in real-time via WebSocket
+5. Once complete, view the report, export as Playwright code, or share the result
+
+### Option B: Run locally
+
+```bash
+# 1. Clone and install
+git clone <this-repo>
+cd autoqa-api
+pnpm install
+
+# 2. Start PostgreSQL
+docker-compose up -d
+
+# 3. Configure environment
+cp .env.example .env
+# Add your GEMINI_API_KEY and FIREBASE_PROJECT_ID to .env
+
+# 4. Install browser
+npx playwright install chromium
+
+# 5. Run migrations and start
+pnpm db:migrate
+pnpm dev
+```
+
+The API will be running at `http://localhost:3001`. Test with:
+
+```bash
+curl http://localhost:3001/health
+```
+
+### Key endpoints to test
+
+```bash
+# Start a test run (requires Firebase JWT)
+POST /api/runs
+{
+  "targetUrl": "https://example.com",
+  "prompt": "Verify the page has a heading and a link",
+  "maxSteps": 10
+}
+
+# AI test suggestions
+POST /api/suggest
+{ "targetUrl": "https://example.com" }
+
+# Accessibility audit
+POST /api/a11y
+{ "targetUrl": "https://example.com" }
+```
+
 ## Deployment
 
 See [deploy/DEPLOYMENT.md](deploy/DEPLOYMENT.md) for the full deployment guide.

@@ -4,3 +4,4 @@ storage/
 .env
 .deploy.env
 *.log
+SUBMISSION.md
