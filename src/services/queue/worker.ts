@@ -441,6 +441,7 @@ export function startWorker() {
           summary: validation.explanation,
           reportUrl: reportUrl || '',
           durationMs,
+          screenshotDataUrl: finalScreenshot ? `data:image/png;base64,${finalScreenshot}` : undefined,
         })
 
         notifyRunComplete({

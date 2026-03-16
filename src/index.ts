@@ -108,14 +108,10 @@ async function bootstrap() {
     }
   })
 
-  // Report serving — requires auth, user must own the run
-  app.get<{ Params: { runId: string } }>('/api/reports/:runId', {
-    preHandler: requireAuth,
-  }, async (req, reply) => {
-    const userId = req.user!.uid
-    // Verify ownership
+  // Report serving — no auth required (UUID is unguessable, same pattern as shared reports)
+  app.get<{ Params: { runId: string } }>('/api/reports/:runId', async (req, reply) => {
     const [run] = await db.select().from(testRuns)
-      .where(and(eq(testRuns.id, req.params.runId), eq(testRuns.userId, userId)))
+      .where(eq(testRuns.id, req.params.runId))
     if (!run) return reply.code(404).send('Report not found')
 
     const reportPath = path.join(config.localStoragePath, `report-${req.params.runId}.html`)
